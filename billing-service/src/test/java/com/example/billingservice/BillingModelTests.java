@@ -1,0 +1,1 @@
+package com.example.billingservice;import com.example.billingservice.model.BillingStatus;import org.junit.jupiter.api.Test;import static org.junit.jupiter.api.Assertions.*;class BillingModelTests{@Test void lifecycleHasWaitingAndActive(){assertNotEquals(BillingStatus.WAITING_FOR_FULFILLMENT,BillingStatus.ACTIVE);}}

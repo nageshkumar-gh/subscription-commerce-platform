@@ -1,0 +1,11 @@
+.DS_Store
+.idea/
+**/target/
+**/.mvn/wrapper/maven-wrapper.jar
+web-ui/node_modules/
+web-ui/dist/
+web-ui/coverage/
+web-ui/*.tsbuildinfo
+admin-ui/node_modules/
+admin-ui/dist/
+admin-ui/*.tsbuildinfo

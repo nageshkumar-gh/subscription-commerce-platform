@@ -1,0 +1,1 @@
+package com.example.fulfillmentservice.repository;import com.example.fulfillmentservice.model.*;import org.springframework.data.mongodb.repository.MongoRepository;import java.util.*;public interface FulfillmentRepository extends MongoRepository<Fulfillment,String>{Optional<Fulfillment>findByOrderId(String id);List<Fulfillment>findByStatusIn(Collection<FulfillmentStatus>s);}

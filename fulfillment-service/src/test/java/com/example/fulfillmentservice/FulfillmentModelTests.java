@@ -1,0 +1,1 @@
+package com.example.fulfillmentservice;import com.example.fulfillmentservice.model.FulfillmentStatus;import org.junit.jupiter.api.Test;import static org.junit.jupiter.api.Assertions.*;class FulfillmentModelTests{@Test void lifecycleEndsDelivered(){assertEquals("DELIVERED",FulfillmentStatus.DELIVERED.name());}}

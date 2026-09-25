@@ -1,0 +1,1 @@
+package com.example.billingservice.repository;import com.example.billingservice.model.*;import org.springframework.data.mongodb.repository.MongoRepository;import java.util.*;public interface SubscriptionRepository extends MongoRepository<Subscription,String>{Optional<Subscription>findByOrderId(String id);List<Subscription>findByStatusIn(Collection<BillingStatus>s);}

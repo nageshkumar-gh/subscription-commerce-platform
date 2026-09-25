@@ -1,0 +1,1 @@
+package com.example.orchestration.workflow;import io.temporal.workflow.*;@WorkflowInterface public interface OrderLifecycleWorkflow{@WorkflowMethod String run(OrderWorkflowRequest request);@QueryMethod String status();}

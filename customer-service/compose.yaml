@@ -1,0 +1,44 @@
+name: subscription-customer
+
+services:
+  customer-mongodb:
+    image: mongo:7.0-jammy
+    container_name: customer-mongodb
+    restart: unless-stopped
+    command: ["mongod", "--wiredTigerCacheSizeGB", "0.25"]
+    ports:
+      - "27017:27017"
+    volumes:
+      - customer-mongodb-data:/data/db
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/27017'"]
+      interval: 10s
+      timeout: 20s
+      retries: 5
+      start_period: 30s
+    networks:
+      - subscription-platform
+
+  customer-service:
+    build: .
+    container_name: customer-service
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      JAVA_TOOL_OPTIONS: -Xms32m -Xmx192m -XX:+UseSerialGC -XX:TieredStopAtLevel=1
+      SPRING_MONGODB_URI: mongodb://customer-mongodb:27017/customer_db
+      AUTH_JWT_SECRET: local-docker-jwt-secret-change-before-production-2026
+    depends_on:
+      customer-mongodb:
+        condition: service_healthy
+    networks:
+      - subscription-platform
+
+volumes:
+  customer-mongodb-data:
+    name: subscription-customer-mongodb-data
+
+networks:
+  subscription-platform:
+    name: subscription-platform

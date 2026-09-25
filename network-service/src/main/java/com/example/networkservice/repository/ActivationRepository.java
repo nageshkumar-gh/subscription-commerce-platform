@@ -1,0 +1,1 @@
+package com.example.networkservice.repository; import com.example.networkservice.model.*; import org.springframework.data.mongodb.repository.MongoRepository; import java.util.*; public interface ActivationRepository extends MongoRepository<Activation,String>{Optional<Activation> findByOrderId(String id);List<Activation> findByStatusIn(Collection<ActivationStatus>s);}

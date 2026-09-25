@@ -1,0 +1,1 @@
+package com.example.networkservice;import com.example.networkservice.model.ActivationStatus;import org.junit.jupiter.api.Test;import static org.junit.jupiter.api.Assertions.*;class NetworkModelTests{@Test void lifecycleHasActiveState(){assertEquals("ACTIVE",ActivationStatus.ACTIVE.name());}}

@@ -1,0 +1,1 @@
+package com.example.tracking.repository;import com.example.tracking.model.LifecycleEvent;import java.util.List;import org.springframework.data.mongodb.repository.MongoRepository;public interface LifecycleEventRepository extends MongoRepository<LifecycleEvent,String>{List<LifecycleEvent>findByOrderIdOrderByOccurredAtAsc(String orderId);}

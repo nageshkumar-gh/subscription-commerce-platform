@@ -1,0 +1,1 @@
+package com.example.billingservice.model;public enum BillingStatus{WAITING_FOR_ACTIVATION,WAITING_FOR_FULFILLMENT,ACTIVE,SUSPENDED,CANCELLED}

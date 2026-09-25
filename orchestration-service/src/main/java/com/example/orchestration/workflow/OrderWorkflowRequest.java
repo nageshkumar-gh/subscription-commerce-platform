@@ -1,0 +1,1 @@
+package com.example.orchestration.workflow;import jakarta.validation.constraints.*;import java.math.BigDecimal;public record OrderWorkflowRequest(@NotBlank String orderId,@NotBlank String customerId,@NotBlank String productId,@NotBlank String planId,@NotBlank String planName,@NotNull @DecimalMin("0.01")BigDecimal total,@NotNull @DecimalMin("0.01")BigDecimal monthlyAmount){}

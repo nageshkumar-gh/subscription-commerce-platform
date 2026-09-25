@@ -1,0 +1,1 @@
+export type Order={id:string;customerId:string;productName:string;storage:string;planName:string;total:number;status:string;createdAt:string};export type LifecycleEvent={id:string;orderId:string;eventType:string;status:string;occurredAt:string};export type OrderTracking=Order&{activation:string;fulfillment:string;billing:string;workflow:string};

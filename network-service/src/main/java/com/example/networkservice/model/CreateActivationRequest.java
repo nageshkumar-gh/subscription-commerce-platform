@@ -1,0 +1,1 @@
+package com.example.networkservice.model; import jakarta.validation.constraints.NotBlank; public record CreateActivationRequest(@NotBlank String orderId,@NotBlank String customerId,@NotBlank String planId){}

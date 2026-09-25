@@ -1,0 +1,1 @@
+package com.example.billingservice.model;import jakarta.validation.constraints.*;import java.math.BigDecimal;public record CreateSubscriptionRequest(@NotBlank String orderId,@NotBlank String customerId,@NotBlank String planName,@NotNull @DecimalMin(value="0.0",inclusive=false)BigDecimal monthlyAmount,@NotBlank String activationId,@NotBlank String fulfillmentId){}

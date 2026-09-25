@@ -1,0 +1,16 @@
+name: subscription-web-ui
+
+services:
+  web-ui:
+    build: .
+    container_name: web-ui
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    networks:
+      - subscription-platform
+
+networks:
+  subscription-platform:
+    external: true
+    name: subscription-platform

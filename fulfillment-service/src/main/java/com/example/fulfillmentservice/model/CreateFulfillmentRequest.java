@@ -1,0 +1,1 @@
+package com.example.fulfillmentservice.model;import jakarta.validation.constraints.NotBlank;public record CreateFulfillmentRequest(@NotBlank String orderId,@NotBlank String customerId,@NotBlank String productId){}

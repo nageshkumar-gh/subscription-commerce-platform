@@ -1,0 +1,1 @@
+import{render,screen}from'@testing-library/react';import{vi,it,expect}from'vitest';import{App}from'../App';it('shows the operations console',()=>{vi.stubGlobal('fetch',vi.fn().mockResolvedValue({ok:true,json:async()=>[]}));render(<App/>);expect(screen.getByRole('heading',{name:'Order tracking'})).toBeInTheDocument()})
