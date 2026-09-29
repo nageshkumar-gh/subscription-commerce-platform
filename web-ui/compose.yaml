@@ -6,7 +6,7 @@ services:
     container_name: web-ui
     restart: unless-stopped
     ports:
-      - "5173:80"
+      - "${WEB_UI_PORT:-5173}:80"
     labels:
       com.datadoghq.tags.env: "${DD_ENV:-test}"
       com.datadoghq.tags.service: "web-ui"

@@ -18,15 +18,21 @@ collect logs from every container on the host.
 
 3. Set `DD_API_KEY` and `DD_SITE` in `.env.datadog`. Set `APP_VERSION` to an
    image tag or Git commit SHA when one is available.
-4. Set `CORS_ALLOWED_ORIGINS` to the exact public Web UI origin. Include the
-   port when it is part of the browser URL. For example, use
-   `http://54.226.253.13:5173` when Docker publishes the UI on port 5173, but
-   use `http://54.226.253.13` when it is published on standard HTTP port 80.
-   Multiple explicit origins may be comma-separated; do not use `*`.
+4. Keep `WEB_UI_PORT=80` for EC2 so the existing HTTP security-group rule can
+   serve the site at `http://PUBLIC_IP` without a non-standard port.
+5. Replace the placeholder in `CORS_ALLOWED_ORIGINS` with the exact public Web
+   UI origin. The scheme, host, and port must match the browser address. With
+   `WEB_UI_PORT=80`, use `http://PUBLIC_IP` (port 80 is omitted). If another
+   host port is selected, such as 5173, use `http://PUBLIC_IP:5173`. Multiple
+   explicit origins may be comma-separated; do not use `*`.
 
 The `.env.datadog` file is ignored by Git and must not be committed. Prefer a
 stable HTTPS domain or an Elastic IP for deployments because a normal EC2
 public IP can change, which would also require updating the allowed origin.
+
+The Compose file defaults to host port 5173 when `WEB_UI_PORT` is unset, which
+preserves the local-development URL `http://localhost:5173`. The EC2 template
+sets the variable to 80 for the public deployment.
 
 ## Deploy
 
@@ -39,6 +45,10 @@ docker compose --env-file .env.datadog -f customer-service/compose.yaml up -d --
 docker compose --env-file .env.datadog -f web-ui/compose.yaml up -d --build
 docker compose --env-file .env.datadog -f datadog-compose.yaml up -d
 ```
+
+With the EC2 template, open the site at `http://PUBLIC_IP`. The instance
+security group must allow inbound TCP port 80. There is no need to expose port
+5173 on EC2 when `WEB_UI_PORT=80`.
 
 Verify the Agent locally:
 
@@ -73,7 +83,7 @@ one or two minutes for new logs to appear:
 
 ```bash
 curl -i http://localhost:8080/actuator/health
-curl -I http://localhost:5173
+curl -I http://localhost:${WEB_UI_PORT:-5173}
 ```
 
 ## Troubleshoot

@@ -44,6 +44,21 @@ Open the customer UI at `http://localhost:5173`. Customer Service is available
 directly at `http://localhost:8080`; its Swagger UI is at
 `http://localhost:8080/swagger-ui.html`.
 
+The Web UI host port is configurable. Local development defaults to 5173 when
+`WEB_UI_PORT` is unset. On EC2, set these values in the uncommitted deployment
+environment file:
+
+```text
+WEB_UI_PORT=80
+CORS_ALLOWED_ORIGINS=http://YOUR_STABLE_PUBLIC_IP_OR_DOMAIN
+```
+
+Then the UI is available at `http://PUBLIC_IP` through the standard inbound
+HTTP rule. The allowed CORS origin must exactly match the browser URL,
+including its scheme, hostname, and any non-standard port. Prefer an Elastic
+IP or domain because a normal EC2 public IP can change after an instance
+stop/start.
+
 Follow logs independently:
 
 ```bash
