@@ -51,6 +51,10 @@ docker compose -f customer-service/compose.yaml logs -f
 docker compose -f web-ui/compose.yaml logs -f
 ```
 
+For centralized EC2 container logs and infrastructure monitoring, see
+[`OBSERVABILITY.md`](OBSERVABILITY.md). It configures selective Datadog log
+collection without committing API keys.
+
 Stop this slice without deleting customer data:
 
 ```bash
@@ -64,7 +68,7 @@ as separate deployments and tested one slice at a time.
 
 | Service | MongoDB container | Host port | Database | Volume |
 | --- | --- | ---: | --- | --- |
-| customer-service | `customer-mongodb` | 27017 | `customer_db` | `customer-mongodb-data` |
+| customer-service | `customer-mongodb` | — (Docker network only) | `customer_db` | `customer-mongodb-data` |
 | product-service | `product-mongodb` | 27018 | `product_db` | `product-mongodb-data` |
 | order-service | `order-mongodb` | 27019 | `order_db` | `order-mongodb-data` |
 | payment-service | `payment-mongodb` | 27020 | `payment_db` | `payment-mongodb-data` |

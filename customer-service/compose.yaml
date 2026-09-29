@@ -6,10 +6,14 @@ services:
     container_name: customer-mongodb
     restart: unless-stopped
     command: ["mongod", "--wiredTigerCacheSizeGB", "0.25"]
-    ports:
-      - "27017:27017"
     volumes:
       - customer-mongodb-data:/data/db
+    labels:
+      com.datadoghq.tags.env: "${DD_ENV:-test}"
+      com.datadoghq.tags.service: "customer-mongodb"
+      com.datadoghq.tags.version: "${MONGODB_VERSION:-7.0}"
+      com.datadoghq.ad.logs: >-
+        [{"source":"mongodb","service":"customer-mongodb"}]
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/27017'"]
       interval: 10s
@@ -29,6 +33,12 @@ services:
       JAVA_TOOL_OPTIONS: -Xms32m -Xmx192m -XX:+UseSerialGC -XX:TieredStopAtLevel=1
       SPRING_MONGODB_URI: mongodb://customer-mongodb:27017/customer_db
       AUTH_JWT_SECRET: local-docker-jwt-secret-change-before-production-2026
+    labels:
+      com.datadoghq.tags.env: "${DD_ENV:-test}"
+      com.datadoghq.tags.service: "customer-service"
+      com.datadoghq.tags.version: "${APP_VERSION:-manual}"
+      com.datadoghq.ad.logs: >-
+        [{"source":"java","service":"customer-service"}]
     depends_on:
       customer-mongodb:
         condition: service_healthy

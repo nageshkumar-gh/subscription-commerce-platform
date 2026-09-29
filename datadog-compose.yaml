@@ -1,0 +1,25 @@
+name: subscription-monitoring
+
+services:
+  datadog-agent:
+    image: gcr.io/datadoghq/agent:7
+    container_name: datadog-agent
+    restart: unless-stopped
+    pid: host
+    environment:
+      DD_API_KEY: "${DD_API_KEY:?Set DD_API_KEY in .env.datadog}"
+      DD_SITE: "${DD_SITE:?Set DD_SITE in .env.datadog}"
+      DD_ENV: "${DD_ENV:-test}"
+      DD_LOGS_ENABLED: "true"
+      # Log collection is opt-in through com.datadoghq.ad.logs service labels.
+      DD_LOGS_CONFIG_CONTAINER_COLLECT_ALL: "false"
+      DD_CONTAINER_EXCLUDE: "name:datadog-agent"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /proc:/host/proc:ro
+      - /sys/fs/cgroup:/host/sys/fs/cgroup:ro
+      - datadog-agent-run:/opt/datadog-agent/run
+
+volumes:
+  datadog-agent-run:
