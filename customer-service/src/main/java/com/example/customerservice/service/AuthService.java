@@ -1,11 +1,13 @@
 package com.example.customerservice.service;
 
 import com.example.customerservice.exception.InvalidCredentialsException;
+import com.example.customerservice.exception.CustomerNotFoundException;
 import com.example.customerservice.model.AuthResponse;
 import com.example.customerservice.model.Customer;
 import com.example.customerservice.model.LoginRequest;
 import com.example.customerservice.model.RegisterRequest;
 import java.time.Instant;
+import java.util.Locale;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
@@ -31,7 +33,7 @@ public class AuthService {
     }
 
     public AuthResponse register(RegisterRequest request) {
-        Customer customer = new Customer(null, request.name().trim(), request.email().trim().toLowerCase(), request.phone(), true);
+        Customer customer = new Customer(null, request.name().trim(), request.email().trim().toLowerCase(Locale.ROOT), request.phone().trim(), true);
         customer.setPasswordHash(passwords.encode(request.password()));
         return response(customers.createCustomer(customer));
     }
@@ -39,8 +41,8 @@ public class AuthService {
     public AuthResponse login(LoginRequest request) {
         Customer customer;
         try {
-            customer = customers.getCustomerByEmail(request.email().trim().toLowerCase());
-        } catch (RuntimeException exception) {
+            customer = customers.getCustomerByEmail(request.email().trim().toLowerCase(Locale.ROOT));
+        } catch (CustomerNotFoundException exception) {
             throw new InvalidCredentialsException();
         }
         if (!customer.isActive() || customer.getPasswordHash() == null || !passwords.matches(request.password(), customer.getPasswordHash())) {

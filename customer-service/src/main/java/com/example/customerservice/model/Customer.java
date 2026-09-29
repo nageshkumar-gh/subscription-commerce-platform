@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
+import org.springframework.data.mongodb.core.index.Indexed;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
 @Document(collection = "customers")
@@ -18,6 +19,7 @@ public class Customer {
 
     @NotBlank(message = "Email is required")
     @Email(message = "Email format is invalid")
+    @Indexed(unique = true)
     private String email;
 
     @NotBlank(message = "Phone number is required")

@@ -1,6 +1,7 @@
 package com.example.customerservice.controller;
 
 import com.example.customerservice.model.Customer;
+import com.example.customerservice.model.UpdateCustomerRequest;
 import com.example.customerservice.service.CustomerService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
@@ -32,7 +33,7 @@ public class CustomerController {
     @Operation(summary = "Update the authenticated customer's profile")
     public ResponseEntity<Customer> updateCurrentCustomer(
             JwtAuthenticationToken authentication,
-            @Valid @RequestBody Customer customer) {
+            @Valid @RequestBody UpdateCustomerRequest customer) {
         return ResponseEntity.ok(customerService.updateCustomer(authentication.getName(), customer));
     }
 
