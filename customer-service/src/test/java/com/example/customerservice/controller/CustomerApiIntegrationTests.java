@@ -24,12 +24,17 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest(properties = "spring.data.mongodb.auto-index-creation=false")
+@SpringBootTest(properties = {
+        "spring.data.mongodb.auto-index-creation=false",
+        "app.cors.allowed-origins=https://customers.example.com,http://54.226.253.13:5173"
+})
 @AutoConfigureMockMvc
 class CustomerApiIntegrationTests {
     @Autowired
@@ -117,6 +122,26 @@ class CustomerApiIntegrationTests {
     void protectedProfileRequiresJwt() throws Exception {
         mvc.perform(get("/api/customers/me"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void corsPreflightAllowsConfiguredOrigin() throws Exception {
+        mvc.perform(options("/api/auth/register")
+                        .header("Origin", "http://54.226.253.13:5173")
+                        .header("Access-Control-Request-Method", "POST")
+                        .header("Access-Control-Request-Headers", "content-type"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Access-Control-Allow-Origin", "http://54.226.253.13:5173"));
+    }
+
+    @Test
+    void corsPreflightRejectsUnconfiguredOrigin() throws Exception {
+        mvc.perform(options("/api/auth/register")
+                        .header("Origin", "https://untrusted.example")
+                        .header("Access-Control-Request-Method", "POST")
+                        .header("Access-Control-Request-Headers", "content-type"))
+                .andExpect(status().isForbidden())
+                .andExpect(header().doesNotExist("Access-Control-Allow-Origin"));
     }
 
     @Test

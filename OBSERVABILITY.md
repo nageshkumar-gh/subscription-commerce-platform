@@ -17,8 +17,16 @@ collect logs from every container on the host.
    ```
 
 3. Set `DD_API_KEY` and `DD_SITE` in `.env.datadog`. Set `APP_VERSION` to an
-   image tag or Git commit SHA when one is available. The `.env.datadog` file is
-   ignored by Git and must not be committed.
+   image tag or Git commit SHA when one is available.
+4. Set `CORS_ALLOWED_ORIGINS` to the exact public Web UI origin. Include the
+   port when it is part of the browser URL. For example, use
+   `http://54.226.253.13:5173` when Docker publishes the UI on port 5173, but
+   use `http://54.226.253.13` when it is published on standard HTTP port 80.
+   Multiple explicit origins may be comma-separated; do not use `*`.
+
+The `.env.datadog` file is ignored by Git and must not be committed. Prefer a
+stable HTTPS domain or an Elastic IP for deployments because a normal EC2
+public IP can change, which would also require updating the allowed origin.
 
 ## Deploy
 
