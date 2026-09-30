@@ -1,4 +1,4 @@
-import type { ActivationRecord, AuthSession, BillingRecord, BillingSubscription, Credentials, DeliveryRecord, EsimPlan, LifecycleEvent, Order, OrderDetails, PaymentRecord, PlacedOrder, Product, ProfileUpdate, Registration, User } from '../types'
+import type { AuthSession, BillingSubscription, Credentials, EsimPlan, LifecycleEvent, Order, OrderDetails, PlacedOrder, Product, ProfileUpdate, Registration, User } from '../types'
 
 export class ApiError extends Error {
   constructor(
@@ -64,82 +64,73 @@ export const api = {
     }
   },
 
-  async createOrder(product: Product, plan: EsimPlan, customer: User): Promise<Order> {
-    const response = await fetch('/api/orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ customerId: customer.id, productId: product.id, productName: product.name, storage: product.storage, planId: plan.id, planName: plan.name, devicePrice: product.price, monthlyPrice: plan.monthlyPrice }) })
-    if (!response.ok) throw new ApiError('Order service could not create the order.', response.status)
-    const saved = await response.json() as { id: string; total: number; createdAt: string }
+  // Orders go through the storefront API (/api/me), which acts only for the signed-in customer and prices from the catalogue.
+
+  async createOrder(product: Product, plan: EsimPlan, customer: User, token: string): Promise<Order> {
+    const saved = await send<{ id: string; total: number; createdAt: string }>('/api/me/orders', token, { productId: product.id, planId: plan.id }, 'Order service could not create the order.')
     return { id: saved.id, product, plan, customer, total: saved.total, createdAt: saved.createdAt }
   },
 
-  async takePayment(order: Order): Promise<void> {
-    const workflow = await fetch('/api/workflows/orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ orderId: order.id, customerId: order.customer.id, productId: order.product.id, planId: order.plan.id, planName: order.plan.name, total: order.total, monthlyAmount: order.plan.monthlyPrice }) })
-    if (!workflow.ok) throw new ApiError('The order workflow could not be started.', workflow.status)
+  async takePayment(order: Order, token: string): Promise<void> {
+    await send(`/api/me/orders/${encodeURIComponent(order.id)}/checkout`, token, {}, 'The order workflow could not be started.')
   },
 
-  async getCustomerOrders(customerId: string): Promise<PlacedOrder[]> {
-    const orders = await getJson<PlacedOrder[]>(`/api/orders?customerId=${encodeURIComponent(customerId)}`, 'Your orders are unavailable. Please try again.')
+  async getCustomerOrders(token: string): Promise<PlacedOrder[]> {
+    const orders = await getJson<PlacedOrder[]>('/api/me/orders', token, 'Your orders are unavailable. Please try again.')
     if (!Array.isArray(orders)) throw new ApiError('Order service returned an invalid response.', 502)
     return orders
   },
 
   /** Cancels an order before its subscription is active; payment is voided or refunded. */
-  async cancelOrder(orderId: string, reason: string): Promise<void> {
-    let response: Response
-    try {
-      response = await fetch(`/api/workflows/orders/${encodeURIComponent(orderId)}/cancel`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason }) })
-    } catch {
-      throw new ApiError('We could not reach our order service. Please try again.', 503)
-    }
-    if (!response.ok) {
-      const body = await response.json().catch(() => null) as { message?: string } | null
-      throw new ApiError(body?.message ?? 'Your order could not be cancelled. Please try again.', response.status)
-    }
+  async cancelOrder(orderId: string, reason: string, token: string): Promise<void> {
+    await send(`/api/me/orders/${encodeURIComponent(orderId)}/cancel`, token, { reason }, 'Your order could not be cancelled. Please try again.')
   },
 
   /** The customer's subscriptions whose monthly billing is running. */
-  async getActiveSubscriptions(customerId: string): Promise<BillingSubscription[]> {
-    const subscriptions = await getJson<BillingSubscription[]>(`/api/subscriptions?customerId=${encodeURIComponent(customerId)}&status=ACTIVE`, 'Your subscriptions are unavailable. Please try again.')
+  async getActiveSubscriptions(token: string): Promise<BillingSubscription[]> {
+    const subscriptions = await getJson<BillingSubscription[]>('/api/me/subscriptions', token, 'Your subscriptions are unavailable. Please try again.')
     return Array.isArray(subscriptions) ? subscriptions : []
   },
 
   /** Lifecycle history for one order; an order with no events yet returns an empty list. */
-  async getOrderEvents(orderId: string): Promise<LifecycleEvent[]> {
-    const events = await getJson<LifecycleEvent[]>(`/api/tracking/orders/${encodeURIComponent(orderId)}/events`, 'Order tracking is unavailable.', true)
+  async getOrderEvents(orderId: string, token: string): Promise<LifecycleEvent[]> {
+    const events = await getJson<LifecycleEvent[]>(`/api/me/orders/${encodeURIComponent(orderId)}/events`, token, 'Order tracking is unavailable.', true)
     return Array.isArray(events) ? events : []
   },
 
-  /**
-   * Loads the order plus each step's record. Steps that have not started yet (404) are null. Returns null when
-   * the order does not exist or belongs to another customer.
-   */
-  async getOrderDetails(orderId: string, customerId: string): Promise<OrderDetails | null> {
-    const order = await getJson<PlacedOrder>(`/api/orders/${encodeURIComponent(orderId)}`, 'This order is unavailable. Please try again.', true)
-    if (!order || order.customerId !== customerId) return null
-    const byOrder = `?orderId=${encodeURIComponent(orderId)}`
-    // A step service being down should not hide the rest of the order, so each lookup degrades to null.
-    const optional = <T,>(url: string) => getJson<T>(url, '', true).catch(() => null)
-    const [payment, delivery, activation, billing, events] = await Promise.all([
-      optional<PaymentRecord>(`/api/payments${byOrder}`),
-      optional<DeliveryRecord>(`/api/fulfillments${byOrder}`),
-      optional<ActivationRecord>(`/api/activations${byOrder}`),
-      optional<BillingRecord>(`/api/subscriptions${byOrder}`),
-      this.getOrderEvents(orderId).catch(() => []),
-    ])
-    return { order, payment, delivery, activation, billing, events }
+  /** The order with each step's record (null until started). Null when the order does not exist or is not the customer's. */
+  async getOrderDetails(orderId: string, token: string): Promise<OrderDetails | null> {
+    const details = await getJson<OrderDetails | null>(`/api/me/orders/${encodeURIComponent(orderId)}`, token, 'This order is unavailable. Please try again.', true)
+    return details ? { ...details, events: Array.isArray(details.events) ? details.events : [] } : null
   },
 }
 
-/** GET JSON; with `notFoundAsNull` a 404 resolves to null instead of throwing. */
-async function getJson<T>(url: string, unavailable: string, notFoundAsNull = false): Promise<T> {
+/** Authenticated GET; with `notFoundAsNull` a 404 resolves to null instead of throwing. */
+async function getJson<T>(url: string, token: string, unavailable: string, notFoundAsNull = false): Promise<T> {
   let response: Response
   try {
-    response = await fetch(url)
+    response = await fetch(url, { headers: authorization(token) })
   } catch {
     throw new ApiError(unavailable, 503)
   }
+  if (response.status === 401) throw new ApiError('Your session has expired. Please log in again.', 401)
   if (notFoundAsNull && response.status === 404) return null as T
   if (!response.ok) throw new ApiError(unavailable, response.status)
   return response.json() as Promise<T>
+}
+
+/** Authenticated JSON POST that surfaces the service's message on failure. */
+async function send<T = unknown>(url: string, token: string, body: unknown, failure: string): Promise<T> {
+  let response: Response
+  try {
+    response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', ...authorization(token) }, body: JSON.stringify(body) })
+  } catch {
+    throw new ApiError('We could not reach our order service. Please try again.', 503)
+  }
+  const parsed = await response.json().catch(() => null) as (T & { message?: string }) | null
+  if (response.status === 401) throw new ApiError('Your session has expired. Please log in again.', 401)
+  if (!response.ok) throw new ApiError(parsed?.message ?? failure, response.status)
+  return parsed as T
 }
 
 function authorization(token: string) {

@@ -36,7 +36,7 @@ class AuthServiceTests {
 
     @BeforeEach
     void setUp() {
-        service = new AuthService(customers, passwords, jwtEncoder, 3600, "admin-customer");
+        service = new AuthService(customers, passwords, jwtEncoder, 3600, "admin-customer", "agent-customer");
     }
 
     @Test
@@ -71,6 +71,34 @@ class AuthServiceTests {
         AuthResponse response = service.login(new LoginRequest(" NAGESH@Example.com ", "Password1"));
 
         assertEquals("access-token", response.accessToken());
+    }
+
+    @Test
+    void loginGrantsOperationsScopeOnlyToConfiguredAgents() {
+        assertEquals("orders:operate", loginScope("agent-customer"));
+        assertEquals("catalog:write", loginScope("admin-customer"));
+        assertEquals(null, loginScope("customer-1"));
+    }
+
+    @Test
+    void registrationNeverGrantsOperationsScope() {
+        when(passwords.encode("Password1")).thenReturn("bcrypt-hash");
+        when(customers.createCustomer(any(Customer.class))).thenAnswer(invocation -> { Customer customer = invocation.getArgument(0); customer.setId("agent-customer"); return customer; });
+        ArgumentCaptor<JwtEncoderParameters> token = ArgumentCaptor.forClass(JwtEncoderParameters.class);
+        when(jwtEncoder.encode(token.capture())).thenReturn(jwt("access-token"));
+        service.register(new RegisterRequest("Agent", "agent@example.com", "123456789", "Password1"));
+        assertEquals(null, token.getValue().getClaims().getClaimAsString("scope"));
+    }
+
+    private String loginScope(String customerId) {
+        Customer customer = new Customer(customerId, "Someone", customerId + "@example.com", "123456789", true);
+        customer.setPasswordHash("bcrypt-hash");
+        when(customers.getCustomerByEmail(customerId + "@example.com")).thenReturn(customer);
+        when(passwords.matches("Password1", "bcrypt-hash")).thenReturn(true);
+        ArgumentCaptor<JwtEncoderParameters> token = ArgumentCaptor.forClass(JwtEncoderParameters.class);
+        when(jwtEncoder.encode(token.capture())).thenReturn(jwt("access-token"));
+        service.login(new LoginRequest(customerId + "@example.com", "Password1"));
+        return token.getValue().getClaims().getClaimAsString("scope");
     }
 
     @Test

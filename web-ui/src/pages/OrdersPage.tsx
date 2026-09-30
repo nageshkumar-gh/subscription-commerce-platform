@@ -9,18 +9,18 @@ import type { PlacedOrder } from '../types'
 type Row = { order: PlacedOrder; progress: OrderProgress }
 
 export function OrdersPage() {
-  const { user } = useAuth()
+  const { user, accessToken } = useAuth()
   const [rows, setRows] = useState<Row[] | null>(null)
   const [error, setError] = useState('')
 
   useEffect(() => {
-    if (!user) return
+    if (!user || !accessToken) return
     let cancelled = false
     async function load() {
       try {
-        const orders = await api.getCustomerOrders(user!.id)
+        const orders = await api.getCustomerOrders(accessToken!)
         // The list only needs each order's lifecycle events; the detail page loads the full step records.
-        const loaded = await Promise.all(orders.map(async (order) => ({ order, progress: describeOrder({ order, payment: null, delivery: null, activation: null, billing: null, events: await api.getOrderEvents(order.id).catch(() => []) }) })))
+        const loaded = await Promise.all(orders.map(async (order) => ({ order, progress: describeOrder({ order, payment: null, delivery: null, activation: null, billing: null, events: await api.getOrderEvents(order.id, accessToken!).catch(() => []) }) })))
         if (!cancelled) { setRows(loaded.sort((a, b) => b.order.createdAt.localeCompare(a.order.createdAt))); setError('') }
       } catch (caught) {
         if (!cancelled) setError(caught instanceof ApiError ? caught.message : 'Your orders are unavailable. Please try again.')
@@ -29,7 +29,7 @@ export function OrdersPage() {
     load()
     const id = setInterval(load, 15000)
     return () => { cancelled = true; clearInterval(id) }
-  }, [user])
+  }, [user, accessToken])
 
   if (error && !rows) return <StateMessage title="Orders unavailable" tone="error"><p>{error}</p></StateMessage>
   if (!rows) return <StateMessage title="Loading your orders…" />

@@ -18,3 +18,4 @@ a.order-link{color:#176b4b;text-decoration:underline;text-underline-offset:3px}a
 .badge--paid,.badge--invoiced{color:#12603f;background:#dff3e8}.badge--payment_failed,.badge--abandoned{color:#922;background:#fee}.badge--issued,.badge--started,.badge--starting,.badge--to_invoice{color:#0d4a74;background:#dcebf7}
 @media(max-width:900px){.invoicing__top{grid-template-columns:1fr}}
 .badge--activated{color:#12603f;background:#dff3e8}
+.agent{display:flex;align-items:center;gap:10px}.agent .ghost{padding:6px 12px}.sign-in{display:grid;gap:12px;max-width:420px;margin:40px auto}.sign-in input{width:100%}

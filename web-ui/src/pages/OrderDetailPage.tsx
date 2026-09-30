@@ -12,7 +12,7 @@ const humanize = (value: string) => value.replaceAll('_', ' ').toLowerCase()
 
 export function OrderDetailPage() {
   const { orderId = '' } = useParams()
-  const { user } = useAuth()
+  const { user, accessToken } = useAuth()
   const [details, setDetails] = useState<OrderDetails | null | undefined>(undefined)
   const [error, setError] = useState('')
 
@@ -20,11 +20,11 @@ export function OrderDetailPage() {
   const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
-    if (!user) return
+    if (!user || !accessToken) return
     let cancelled = false
     async function load() {
       try {
-        const loaded = await api.getOrderDetails(orderId, user!.id)
+        const loaded = await api.getOrderDetails(orderId, accessToken!)
         if (!cancelled) { setDetails(loaded); setError('') }
       } catch (caught) {
         if (!cancelled) setError(caught instanceof ApiError ? caught.message : 'This order is unavailable. Please try again.')
@@ -33,7 +33,7 @@ export function OrderDetailPage() {
     load()
     const id = setInterval(load, 10000)
     return () => { cancelled = true; clearInterval(id) }
-  }, [orderId, user, reloadKey])
+  }, [orderId, user, accessToken, reloadKey])
 
   if (error && !details) return <StateMessage title="Order unavailable" tone="error"><p>{error}</p><Link to="/orders">Back to your orders</Link></StateMessage>
   if (details === undefined) return <StateMessage title="Loading your order…" />
@@ -88,7 +88,7 @@ export function OrderDetailPage() {
         </aside>
       </div>
 
-      {cancellable && <CancelOrder orderId={order.id} onCancelled={() => setReloadKey((key) => key + 1)} />}
+      {cancellable && <CancelOrder orderId={order.id} token={accessToken!} onCancelled={() => setReloadKey((key) => key + 1)} />}
 
       {events.length > 0 && (
         <details className="history">
@@ -106,7 +106,7 @@ export function OrderDetailPage() {
 
 const cancelReasons = ['I changed my mind', 'I found a better price', 'Delivery is taking too long', 'I ordered the wrong phone or plan', 'Other']
 
-function CancelOrder({ orderId, onCancelled }: { orderId: string; onCancelled: () => void }) {
+function CancelOrder({ orderId, token, onCancelled }: { orderId: string; token: string; onCancelled: () => void }) {
   const [open, setOpen] = useState(false)
   const [reason, setReason] = useState(cancelReasons[0])
   const [busy, setBusy] = useState(false)
@@ -116,7 +116,7 @@ function CancelOrder({ orderId, onCancelled }: { orderId: string; onCancelled: (
     setBusy(true)
     setError('')
     try {
-      await api.cancelOrder(orderId, `Customer: ${reason}`)
+      await api.cancelOrder(orderId, reason, token)
       setOpen(false)
       onCancelled()
     } catch (caught) {

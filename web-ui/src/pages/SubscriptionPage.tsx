@@ -10,14 +10,14 @@ const formatDate = (value?: string | null) => (value ? new Date(value).toLocaleD
 
 /** Only subscriptions whose monthly billing is running; orders still in progress live under My orders. */
 export function SubscriptionPage() {
-  const { user } = useAuth()
+  const { user, accessToken } = useAuth()
   const [rows, setRows] = useState<Row[] | null>(null)
   const [error, setError] = useState('')
 
   useEffect(() => {
-    if (!user) return
+    if (!user || !accessToken) return
     let cancelled = false
-    Promise.all([api.getActiveSubscriptions(user.id), api.getCustomerOrders(user.id).catch(() => [])])
+    Promise.all([api.getActiveSubscriptions(accessToken), api.getCustomerOrders(accessToken).catch(() => [])])
       .then(([subscriptions, orders]) => {
         if (cancelled) return
         const byId = new Map(orders.map((order) => [order.id, order]))
@@ -25,7 +25,7 @@ export function SubscriptionPage() {
       })
       .catch((caught) => { if (!cancelled) setError(caught instanceof ApiError ? caught.message : 'Your subscriptions are unavailable. Please try again.') })
     return () => { cancelled = true }
-  }, [user])
+  }, [user, accessToken])
 
   if (error) return <StateMessage title="Subscriptions unavailable" tone="error"><p>{error}</p></StateMessage>
   if (!rows) return <StateMessage title="Loading your subscriptions…" />

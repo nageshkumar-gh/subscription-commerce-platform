@@ -48,16 +48,25 @@ describe('customer order pages', () => {
     localStorage.setItem('subscription-auth-session', JSON.stringify({ accessToken: 'token', user: { id: 'customer-1', name: 'Test Customer', email: 'test@example.com' } }))
   })
 
-  function backend(orders: PlacedOrder[]) {
-    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+  const events = [{ eventId: 'e1', eventType: 'PAYMENT', status: 'COMPLETED', occurredAt: '2026-09-29T10:05:00Z' }]
+  /** Stands in for the storefront API: requires the customer's token and only serves that customer's orders. */
+  function backend(orders: PlacedOrder[], extra: (url: string) => Response | undefined = () => undefined) {
+    const posts: { url: string; body: unknown }[] = []
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
-      if (url === '/api/orders?customerId=customer-1') return json(orders.filter((o) => o.customerId === 'customer-1'))
-      const match = orders.find((o) => url === `/api/orders/${o.id}`)
-      if (match) return json(match)
-      if (url.startsWith('/api/payments?orderId=order-1')) return json(paid)
-      if (url.includes('/events')) return json([{ eventId: 'e1', eventType: 'PAYMENT', status: 'COMPLETED', occurredAt: '2026-09-29T10:05:00Z' }])
+      if (!url.startsWith('/api/me/')) return json({ message: 'not found' }, 404)
+      if ((init?.headers as Record<string, string> | undefined)?.Authorization !== 'Bearer token') return json({ message: 'unauthorized' }, 401)
+      if (init?.method === 'POST') { posts.push({ url, body: JSON.parse(String(init.body)) }); return json({ status: 'CANCELLED' }, 202) }
+      const own = orders.filter((o) => o.customerId === 'customer-1')
+      if (url === '/api/me/orders') return json(own)
+      const custom = extra(url)
+      if (custom) return custom
+      const match = own.find((o) => url === `/api/me/orders/${o.id}`)
+      if (match) return json({ order: match, payment: paid, delivery: null, activation: null, billing: null, events })
+      if (own.some((o) => url === `/api/me/orders/${o.id}/events`)) return json(events)
       return json({ message: 'not found' }, 404)
     }))
+    return posts
   }
 
   it('lists orders with a link that opens the order detail page', async () => {
@@ -79,12 +88,7 @@ describe('customer order pages', () => {
   })
 
   it('lists only active subscriptions under My subscription', async () => {
-    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
-      const url = String(input)
-      if (url === '/api/subscriptions?customerId=customer-1&status=ACTIVE') return json([{ id: 'sub-1', orderId: 'order-1', planName: 'Unlimited', monthlyAmount: 29.99, status: 'ACTIVE', billingStartedAt: '2026-09-30T10:00:00Z', nextBillingAt: '2026-10-30T10:00:00Z' }])
-      if (url === '/api/orders?customerId=customer-1') return json([order])
-      return json({ message: 'not found' }, 404)
-    }))
+    backend([order], (url) => url === '/api/me/subscriptions' ? json([{ id: 'sub-1', orderId: 'order-1', planName: 'Unlimited', monthlyAmount: 29.99, status: 'ACTIVE', billingStartedAt: '2026-09-30T10:00:00Z', nextBillingAt: '2026-10-30T10:00:00Z' }]) : undefined)
     window.history.pushState({}, '', '/subscription')
     render(<App />)
     expect(await screen.findByRole('heading', { name: 'Active subscriptions' })).toBeInTheDocument()
@@ -93,30 +97,18 @@ describe('customer order pages', () => {
   })
 
   it('lets the customer cancel an order before the subscription is active', async () => {
-    const posts: { url: string; body: unknown }[] = []
-    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input)
-      if (init?.method === 'POST') { posts.push({ url, body: JSON.parse(String(init.body)) }); return json({ status: 'CANCELLED' }, 202) }
-      if (url === '/api/orders/order-1') return json(order)
-      if (url.startsWith('/api/payments?orderId=order-1')) return json(paid)
-      return json({ message: 'not found' }, 404)
-    }))
+    const posts = backend([order])
     window.history.pushState({}, '', '/orders/order-1')
     const user = userEvent.setup()
     render(<App />)
     await user.click(await screen.findByRole('button', { name: 'Cancel order' }))
     await user.selectOptions(screen.getByLabelText('Why are you cancelling?'), 'I found a better price')
     await user.click(screen.getByRole('button', { name: 'Confirm cancellation' }))
-    expect(posts).toEqual([{ url: '/api/workflows/orders/order-1/cancel', body: { reason: 'Customer: I found a better price' } }])
+    expect(posts).toEqual([{ url: '/api/me/orders/order-1/cancel', body: { reason: 'I found a better price' } }])
   })
 
   it('hides cancellation once the subscription is active', async () => {
-    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
-      const url = String(input)
-      if (url === '/api/orders/order-1') return json(order)
-      if (url.startsWith('/api/subscriptions?orderId=order-1')) return json({ id: 'sub-1', status: 'ACTIVE', planName: 'Unlimited', monthlyAmount: 29.99 })
-      return json({ message: 'not found' }, 404)
-    }))
+    backend([order], (url) => url === '/api/me/orders/order-1' ? json({ order, payment: paid, delivery: null, activation: null, billing: { id: 'sub-1', status: 'ACTIVE', planName: 'Unlimited', monthlyAmount: 29.99 }, events: [] }) : undefined)
     window.history.pushState({}, '', '/orders/order-1')
     render(<App />)
     expect(await screen.findByText('What happens next')).toBeInTheDocument()

@@ -10,3 +10,6 @@ web-ui/*.tsbuildinfo
 admin-ui/node_modules/
 admin-ui/dist/
 admin-ui/*.tsbuildinfo
+
+# Local secrets and settings for docker compose (--env-file local.env); never commit.
+local.env

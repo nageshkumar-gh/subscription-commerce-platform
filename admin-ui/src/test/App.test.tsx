@@ -1,5 +1,5 @@
 import{fireEvent,render,screen,waitFor}from'@testing-library/react';import{vi,it,expect,beforeEach}from'vitest';import{App}from'../App';
-beforeEach(()=>vi.unstubAllGlobals());
+beforeEach(()=>{vi.unstubAllGlobals();sessionStorage.setItem('ops-agent-session',JSON.stringify({token:'agent-token',email:'agent@example.com'}))});
 it('shows the operations console',()=>{vi.stubGlobal('fetch',vi.fn().mockResolvedValue({ok:true,json:async()=>[]}));render(<App/>);expect(screen.getByRole('heading',{name:'Order tracking'})).toBeInTheDocument()});
 it('joins orders to the real tracking summary',async()=>{vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{const url=String(input);if(url==='/api/orders')return{ok:true,json:async()=>[{id:'order-1',customerId:'customer-1',productName:'Phone',storage:'128GB',planName:'Unlimited',total:10,status:'PENDING_PAYMENT',createdAt:'2026-01-01T00:00:00Z'}]};if(url==='/api/tracking/orders')return{ok:true,json:async()=>[{orderId:'order-1',customerId:'customer-1',workflowStatus:'WAITING_FOR_PAYMENT',paymentStatus:'PENDING',activationStatus:'NOT_STARTED',fulfillmentStatus:'NOT_STARTED',billingStatus:'NOT_STARTED',updatedAt:'2026-01-01T00:00:00Z'}]};return{ok:true,json:async()=>({status:'UP'})}}));render(<App/>);expect(await screen.findByText('order-1')).toBeInTheDocument();expect(await screen.findByText(/waiting for payment/i)).toBeInTheDocument();expect(await screen.findByText(/^pending$/i)).toBeInTheDocument()});
 
@@ -48,3 +48,17 @@ it('only previews future dates and saves the daily schedule',async()=>{window.lo
   fireEvent.change(await screen.findByLabelText('Run date'),{target:{value:'2999-01-01'}});expect(screen.getByRole('button',{name:'Run now'})).toBeDisabled();
   fireEvent.click(await screen.findByLabelText(/Run automatically/));fireEvent.change(screen.getByLabelText(/Run time/),{target:{value:'06:30'}});fireEvent.click(screen.getByRole('button',{name:'Save schedule'}));
   await waitFor(()=>expect(sent).toEqual([{url:'/api/billing-schedule',method:'PUT',body:{enabled:false,runTime:'06:30'}}]));expect(await screen.findByText(/Paused/)).toBeInTheDocument()});
+
+it('requires an operations agent to sign in',async()=>{sessionStorage.clear();window.location.hash='';const calls:{url:string;auth:string|null}[]=[];
+  vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request,init?:RequestInit)=>{const url=String(input);const auth=new Headers(init?.headers).get('Authorization');calls.push({url,auth});
+    if(url==='/api/auth/login'){const body=JSON.parse(String(init?.body));return body.email==='customer@example.com'?{ok:true,status:200,json:async()=>({accessToken:'customer-token'})}:{ok:true,status:200,json:async()=>({accessToken:'agent-token'})}}
+    if(url==='/api/auth/agent')return{ok:auth==='Bearer agent-token',status:auth==='Bearer agent-token'?204:403,json:async()=>({})};
+    if(url.startsWith('/api/'))return{ok:true,status:200,json:async()=>[]};
+    return{ok:true,status:200,json:async()=>({status:'UP'})}}));
+  render(<App/>);expect(screen.getByRole('heading',{name:'Sign in'})).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('Email'),{target:{value:'customer@example.com'}});fireEvent.change(screen.getByLabelText('Password'),{target:{value:'pw'}});fireEvent.click(screen.getByRole('button',{name:'Sign in'}));
+  expect(await screen.findByText('This account is not an operations agent.')).toBeInTheDocument();expect(calls.some(c=>c.url==='/api/orders')).toBe(false);
+  fireEvent.change(screen.getByLabelText('Email'),{target:{value:'agent@example.com'}});fireEvent.click(screen.getByRole('button',{name:'Sign in'}));
+  expect(await screen.findByRole('heading',{name:'Order tracking'})).toBeInTheDocument();expect(screen.getByText('agent@example.com')).toBeInTheDocument();
+  await waitFor(()=>expect(calls.find(c=>c.url==='/api/orders')?.auth).toBe('Bearer agent-token'))});
+it('returns to sign-in when the session expires',async()=>{window.location.hash='';vi.stubGlobal('fetch',vi.fn(async()=>({ok:false,status:401,json:async()=>({})})));render(<App/>);expect(await screen.findByRole('heading',{name:'Sign in'})).toBeInTheDocument();expect(sessionStorage.getItem('ops-agent-session')).toBeNull()});
