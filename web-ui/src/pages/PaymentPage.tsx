@@ -8,13 +8,13 @@ import type { Order } from '../types'
 
 export function PaymentPage() {
   const { product, plan, clearCart } = useCart()
-  const { user } = useAuth()
+  const { user, accessToken } = useAuth()
   const navigate = useNavigate()
   const [cardName, setCardName] = useState('')
   const [cardNumber, setCardNumber] = useState('')
   const [error, setError] = useState('')
   const [paying, setPaying] = useState(false)
-  if (!product || !plan || !user) return <StateMessage title="Payment unavailable" tone="error"><Link to="/products">Return to products</Link></StateMessage>
+  if (!product || !plan || !user || !accessToken) return <StateMessage title="Payment unavailable" tone="error"><Link to="/products">Return to products</Link></StateMessage>
 
   async function pay(event: FormEvent) {
     event.preventDefault()
@@ -22,8 +22,8 @@ export function PaymentPage() {
     if (cardName.trim().length < 2 || cardNumber.replace(/\s/g, '').length !== 16) return setError('Enter a cardholder name and a 16-digit test card number.')
     setPaying(true)
     try {
-      const order: Order = await api.createOrder(product!, plan!, user!)
-      await api.takePayment(order)
+      const order: Order = await api.createOrder(product!, plan!, user!, accessToken!)
+      await api.takePayment(order, accessToken!)
       clearCart()
       navigate('/order-confirmation', { replace: true, state: { order } })
     } catch {

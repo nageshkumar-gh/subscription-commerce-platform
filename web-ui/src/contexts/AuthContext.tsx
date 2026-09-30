@@ -6,6 +6,8 @@ const SESSION_KEY = 'subscription-auth-session'
 
 type AuthContextValue = {
   user: User | null
+  /** Bearer token for the storefront API; null when signed out. */
+  accessToken: string | null
   login: (credentials: Credentials) => Promise<void>
   register: (registration: Registration) => Promise<void>
   updateProfile: (profile: ProfileUpdate) => Promise<void>
@@ -27,6 +29,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<AuthContextValue>(() => ({
     user,
+    accessToken: session?.accessToken ?? null,
     login: async (credentials) => saveSession(await api.login(credentials)),
     register: async (registration) => saveSession(await api.register(registration)),
     updateProfile: async (profile) => {

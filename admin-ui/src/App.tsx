@@ -5,6 +5,8 @@ import{ApprovalQueue}from'./pages/ApprovalQueue';
 import{CustomerSubscriptions}from'./pages/CustomerSubscriptions';
 import{InvoicingPage}from'./pages/InvoicingPage';
 import{OrderPage}from'./pages/OrderPage';
+import{SignIn}from'./pages/SignIn';
+import{readSession,saveSession,SIGNED_OUT_EVENT,type AgentSession}from'./auth';
 import{buildQueues,needsAction,type QueueRow}from'./pages/queues';
 import type{Decision,Operations,OrderTracking,ServiceHealth,Step}from'./types';
 import'./styles.css';
@@ -17,7 +19,15 @@ type Tab='orders'|Step|'invoicing';
 /** The single-order page lives at #/orders/<id> so it can be linked, bookmarked and left with the Back button. */
 const orderFromHash=()=>decodeURIComponent(/^#\/orders\/(.+)$/.exec(window.location.hash)?.[1]??'')||null;
 
+/** The console is only shown to a signed-in operations agent. */
 export function App(){
+  const[session,setSession]=useState<AgentSession|null>(readSession);
+  useEffect(()=>{const signedOut=()=>setSession(null);window.addEventListener(SIGNED_OUT_EVENT,signedOut);return()=>window.removeEventListener(SIGNED_OUT_EVENT,signedOut)},[]);
+  if(!session)return <SignIn onSignedIn={setSession}/>;
+  return <Console agent={session.email} onSignOut={()=>{saveSession(null);setSession(null)}}/>;
+}
+
+function Console({agent,onSignOut}:{agent:string;onSignOut:()=>void}){
   const[tab,setTab]=useState<Tab>('orders'),[openOrder,setOpenOrder]=useState<string|null>(orderFromHash);
   useEffect(()=>{const sync=()=>{setOpenOrder(orderFromHash());window.scrollTo(0,0)};window.addEventListener('hashchange',sync);return()=>window.removeEventListener('hashchange',sync)},[]);
   const showTab=(next:Tab)=>{setTab(next);if(openOrder)window.location.hash='#/'};
@@ -40,7 +50,7 @@ export function App(){
   const visible=orders.filter(o=>matches(query,[o.id,o.customerId,o.productName,o.storage,o.planName,o.status,o.workflow,o.payment,o.activation,o.fulfillment,o.billing])).sort((a,b)=>byDate(a.createdAt,b.createdAt,newestFirst));
   const sortHeader=<th aria-sort={newestFirst?'descending':'ascending'}><button className="sort" onClick={()=>setNewestFirst(v=>!v)} title="Sort by order date">Order {newestFirst?'↓':'↑'}</button></th>;
   return <>
-    <header><div><p>OPERATIONS CONSOLE</p><h1>{openOrder?'Order details':tab==='invoicing'?'Monthly invoicing':activeQueue?.title??'Order tracking'}</h1></div><span className="role">Agent view</span></header>
+    <header><div><p>OPERATIONS CONSOLE</p><h1>{openOrder?'Order details':tab==='invoicing'?'Monthly invoicing':activeQueue?.title??'Order tracking'}</h1></div><div className="agent"><span className="role">{agent}</span><button className="ghost" onClick={onSignOut}>Sign out</button></div></header>
     <nav className="tabs" aria-label="Sections">
       <button aria-current={!openOrder&&tab==='orders'?'page':undefined} onClick={()=>showTab('orders')}>Orders</button>
       {queues.map(queue=>{const count=queue.rows.filter(needsAction).length;return <button key={queue.step} aria-current={!openOrder&&tab===queue.step?'page':undefined} onClick={()=>showTab(queue.step)}>{queue.tab}{count>0&&<span className="count" aria-label={`${count} need action`}>{count}</span>}</button>})}
