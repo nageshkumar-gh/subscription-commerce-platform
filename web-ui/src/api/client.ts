@@ -1,7 +1,4 @@
-import { products, createSubscription } from '../data/mockData'
-import type { AuthSession, Credentials, EsimPlan, Order, Product, ProfileUpdate, Registration, Subscription, User } from '../types'
-
-const delay = (milliseconds = 250) => new Promise((resolve) => setTimeout(resolve, milliseconds))
+import type { ActivationRecord, AuthSession, BillingRecord, BillingSubscription, Credentials, DeliveryRecord, EsimPlan, LifecycleEvent, Order, OrderDetails, PaymentRecord, PlacedOrder, Product, ProfileUpdate, Registration, User } from '../types'
 
 export class ApiError extends Error {
   constructor(
@@ -13,9 +10,17 @@ export class ApiError extends Error {
 }
 
 export const api = {
-  async getProducts(): Promise<Product[]> {
-    await delay()
-    return products
+  async getCatalogue(): Promise<{ products: Product[]; plans: EsimPlan[] }> {
+    try {
+      const [productsResponse, plansResponse] = await Promise.all([fetch('/api/products'), fetch('/api/esim-plans')])
+      if (!productsResponse.ok || !plansResponse.ok) throw new ApiError('The product catalogue is unavailable. Please try again.', Math.max(productsResponse.status, plansResponse.status))
+      const [products, plans] = await Promise.all([productsResponse.json() as Promise<Product[]>, plansResponse.json() as Promise<EsimPlan[]>])
+      if (!Array.isArray(products) || !Array.isArray(plans)) throw new ApiError('Product service returned an invalid response.', 502)
+      return { products, plans }
+    } catch (error) {
+      if (error instanceof ApiError) throw error
+      throw new ApiError('Product service is unavailable. Please try again.', 503)
+    }
   },
 
   async login(credentials: Credentials): Promise<AuthSession> {
@@ -66,11 +71,75 @@ export const api = {
     return { id: saved.id, product, plan, customer, total: saved.total, createdAt: saved.createdAt }
   },
 
-  async takePayment(order: Order): Promise<Subscription> {
+  async takePayment(order: Order): Promise<void> {
     const workflow = await fetch('/api/workflows/orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ orderId: order.id, customerId: order.customer.id, productId: order.product.id, planId: order.plan.id, planName: order.plan.name, total: order.total, monthlyAmount: order.plan.monthlyPrice }) })
     if (!workflow.ok) throw new ApiError('The order workflow could not be started.', workflow.status)
-    return createSubscription(order.product, order.plan)
   },
+
+  async getCustomerOrders(customerId: string): Promise<PlacedOrder[]> {
+    const orders = await getJson<PlacedOrder[]>(`/api/orders?customerId=${encodeURIComponent(customerId)}`, 'Your orders are unavailable. Please try again.')
+    if (!Array.isArray(orders)) throw new ApiError('Order service returned an invalid response.', 502)
+    return orders
+  },
+
+  /** Cancels an order before its subscription is active; payment is voided or refunded. */
+  async cancelOrder(orderId: string, reason: string): Promise<void> {
+    let response: Response
+    try {
+      response = await fetch(`/api/workflows/orders/${encodeURIComponent(orderId)}/cancel`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason }) })
+    } catch {
+      throw new ApiError('We could not reach our order service. Please try again.', 503)
+    }
+    if (!response.ok) {
+      const body = await response.json().catch(() => null) as { message?: string } | null
+      throw new ApiError(body?.message ?? 'Your order could not be cancelled. Please try again.', response.status)
+    }
+  },
+
+  /** The customer's subscriptions whose monthly billing is running. */
+  async getActiveSubscriptions(customerId: string): Promise<BillingSubscription[]> {
+    const subscriptions = await getJson<BillingSubscription[]>(`/api/subscriptions?customerId=${encodeURIComponent(customerId)}&status=ACTIVE`, 'Your subscriptions are unavailable. Please try again.')
+    return Array.isArray(subscriptions) ? subscriptions : []
+  },
+
+  /** Lifecycle history for one order; an order with no events yet returns an empty list. */
+  async getOrderEvents(orderId: string): Promise<LifecycleEvent[]> {
+    const events = await getJson<LifecycleEvent[]>(`/api/tracking/orders/${encodeURIComponent(orderId)}/events`, 'Order tracking is unavailable.', true)
+    return Array.isArray(events) ? events : []
+  },
+
+  /**
+   * Loads the order plus each step's record. Steps that have not started yet (404) are null. Returns null when
+   * the order does not exist or belongs to another customer.
+   */
+  async getOrderDetails(orderId: string, customerId: string): Promise<OrderDetails | null> {
+    const order = await getJson<PlacedOrder>(`/api/orders/${encodeURIComponent(orderId)}`, 'This order is unavailable. Please try again.', true)
+    if (!order || order.customerId !== customerId) return null
+    const byOrder = `?orderId=${encodeURIComponent(orderId)}`
+    // A step service being down should not hide the rest of the order, so each lookup degrades to null.
+    const optional = <T,>(url: string) => getJson<T>(url, '', true).catch(() => null)
+    const [payment, delivery, activation, billing, events] = await Promise.all([
+      optional<PaymentRecord>(`/api/payments${byOrder}`),
+      optional<DeliveryRecord>(`/api/fulfillments${byOrder}`),
+      optional<ActivationRecord>(`/api/activations${byOrder}`),
+      optional<BillingRecord>(`/api/subscriptions${byOrder}`),
+      this.getOrderEvents(orderId).catch(() => []),
+    ])
+    return { order, payment, delivery, activation, billing, events }
+  },
+}
+
+/** GET JSON; with `notFoundAsNull` a 404 resolves to null instead of throwing. */
+async function getJson<T>(url: string, unavailable: string, notFoundAsNull = false): Promise<T> {
+  let response: Response
+  try {
+    response = await fetch(url)
+  } catch {
+    throw new ApiError(unavailable, 503)
+  }
+  if (notFoundAsNull && response.status === 404) return null as T
+  if (!response.ok) throw new ApiError(unavailable, response.status)
+  return response.json() as Promise<T>
 }
 
 function authorization(token: string) {

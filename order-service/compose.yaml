@@ -1,0 +1,59 @@
+name: subscription-order
+
+services:
+  order-mongodb:
+    image: mongo:7.0-jammy
+    container_name: order-mongodb
+    # Localhost-only, for MongoDB Compass / mongosh; not reachable from other machines.
+    ports: ["127.0.0.1:${ORDER_MONGODB_PORT:-27019}:27017"]
+    restart: unless-stopped
+    command: ["mongod", "--wiredTigerCacheSizeGB", "0.25"]
+    volumes:
+      - order-mongodb-data:/data/db
+    labels:
+      com.datadoghq.tags.env: "${DD_ENV:-test}"
+      com.datadoghq.tags.service: "order-mongodb"
+      com.datadoghq.tags.version: "${MONGODB_VERSION:-7.0}"
+      com.datadoghq.ad.logs: >-
+        [{"source":"mongodb","service":"order-mongodb"}]
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/27017'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks: [subscription-platform]
+
+  order-service:
+    build: .
+    container_name: order-service
+    restart: unless-stopped
+    environment:
+      JAVA_TOOL_OPTIONS: -Xms32m -Xmx192m -XX:+UseSerialGC -XX:TieredStopAtLevel=1
+      SPRING_MONGODB_URI: mongodb://order-mongodb:27017/order_db
+      CORS_ALLOWED_ORIGINS: "${CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}"
+    labels:
+      com.datadoghq.tags.env: "${DD_ENV:-test}"
+      com.datadoghq.tags.service: "order-service"
+      com.datadoghq.tags.version: "${APP_VERSION:-manual}"
+      com.datadoghq.ad.logs: >-
+        [{"source":"java","service":"order-service"}]
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/8082'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      order-mongodb:
+        condition: service_healthy
+    networks: [subscription-platform]
+
+volumes:
+  order-mongodb-data:
+    name: subscription-order-mongodb-data
+
+networks:
+  subscription-platform:
+    name: subscription-platform
+    external: true

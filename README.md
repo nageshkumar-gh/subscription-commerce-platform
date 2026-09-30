@@ -1,138 +1,114 @@
-## Subscription Commerce Platform
+# Subscription Commerce Platform
 
-A Spring Boot microservices project demonstrating customer management,
-products, orders, payments, eSIM activation, fulfilment, Kafka event streaming,
-and Temporal workflow orchestration.
+A Spring Boot and React reference platform for a subscription-commerce order
+lifecycle. Nine backend services own separate bounded contexts and data stores;
+Kafka distributes lifecycle events and Temporal coordinates the durable saga.
 
-### Services
+## Current implementation status
 
-| Service | Port | MongoDB database | Main endpoints |
+All nine backend services have implementation and test suites in this working
+tree. "Implemented" means the code contract exists; it does not mean the whole
+stack has been deployed or production-hardened.
+
+| Service | Port | Data/dependency | Current contract and status |
 | --- | ---: | --- | --- |
-| customer-service | 8080 | customer_db | `/api/customers` |
-| product-service | 8081 | product_db | `/api/products`, `/api/esim-plans` |
-| order-service | 8082 | order_db | `/api/orders` |
-| payment-service | 8083 | payment_db | `/api/payments` |
-| network-service | 8084 | network_db | `/api/activations` |
-| fulfillment-service | 8085 | fulfillment_db | `/api/fulfillments` |
-| billing-service | 8086 | billing_db | `/api/subscriptions` |
-| orchestration-service | 8087 | Temporal | `/api/workflows/orders` |
-| tracking-service | 8088 | tracking_db | `/api/tracking/orders/{orderId}/events` |
-| admin-ui | 5174 | — | Agent order-tracking dashboard |
+| `customer-service` | 8080 | `customer_db` | Implemented: registration, login, BCrypt passwords, JWT issuance, authenticated `/api/customers/me`, and configured catalogue-admin scope. |
+| `product-service` | 8081 | `product_db` | Implemented: public active products/eSIM plans and JWT-protected catalogue administration under `/api/admin/**`. |
+| `order-service` | 8082 | `order_db` | Implemented: create/list/get/delete orders, validated status transitions, and device plus first-month total calculation. New orders start in `PENDING_PAYMENT`. |
+| `payment-service` | 8083 | `payment_db` | Implemented as a provider-neutral payment-intent boundary: idempotent create, lookup, customer list, and refund request. It does **not** complete payments automatically. |
+| `network-service` | 8084 | `network_db` | Implemented: idempotent eSIM activation requests and timed test transitions from queued to active. |
+| `fulfillment-service` | 8085 | `fulfillment_db` | Implemented: idempotent fulfilment requests and timed test transitions through delivery. |
+| `billing-service` | 8086 | `billing_db` | Implemented: subscriptions wait for activation and fulfilment, then become active; suspend/cancel operations are supported. |
+| `orchestration-service` | 8087 | Temporal, Kafka | Implemented: idempotent durable order workflow, dependency polling, lifecycle-event publishing, and workflow status query. |
+| `tracking-service` | 8088 | `tracking_db`, Kafka | Implemented: idempotent lifecycle-event projection, chronological order history, summaries, retry, and dead-letter topic. |
 
-### Incremental Docker setup
+The customer `web-ui` uses the real customer, catalogue, order, and workflow
+APIs. The `admin-ui` reads order/tracking data and service health. The admin UI
+does not yet have identity/RBAC and must not be exposed publicly.
 
-Each independently deployable component owns its Compose file. Start only the
-slice you are developing instead of running the complete distributed system on
-one laptop. Each data-owning service also owns its MongoDB container and volume.
+## API contracts
 
-MongoDB is pinned to `7.0-jammy` because MongoDB 8's TCMalloc implementation
-cannot start on Linux kernels 6.19 through 7.0.13. This is particularly relevant
-when Docker Desktop supplies the Linux VM kernel.
+- Customer: `POST /api/auth/register`, `POST /api/auth/login`, and authenticated
+  `GET|PUT|DELETE /api/customers/me`.
+- Catalogue: public `GET /api/products`, `GET /api/products/{id}`, and
+  `GET /api/esim-plans`; admin CRUD uses `/api/admin/products` and
+  `/api/admin/esim-plans` with JWT scope `catalog:write`.
+- Orders: `/api/orders`; payments: `/api/payments`; activations:
+  `/api/activations`; fulfilments: `/api/fulfillments`; subscriptions:
+  `/api/subscriptions`.
+- Workflow: `POST /api/workflows/orders` and
+  `GET /api/workflows/orders/{orderId}`.
+- Tracking: `GET /api/tracking/orders` and
+  `GET /api/tracking/orders/{orderId}/events`.
 
-The Customer slice creates the shared `subscription-platform` Docker network.
-The Web UI joins that network and resolves backends at request time, so services
-that have not been started yet do not prevent the UI from loading.
+Every backend exposes `/v3/api-docs`, `/swagger-ui.html`, and Actuator health.
+See [DEPLOYMENT_RUNBOOK.md](DEPLOYMENT_RUNBOOK.md) for private SSH-tunnel access.
+
+## Authentication and catalogue-admin bootstrap
+
+Customer Service signs HS256 JWTs; Product Service validates the same issuer and
+secret. `AUTH_JWT_SECRET` is required, must be at least 32 bytes, and must be
+identical in both services. Never commit a real value.
+
+Self-registration deliberately creates only ordinary customers. To bootstrap a
+catalogue administrator:
+
+1. Register the intended administrator normally through `POST /api/auth/register`.
+2. Copy the returned `customer.id` (or read it from `customer_db.customers`).
+3. Set `CATALOG_ADMIN_CUSTOMER_IDS` to that ID; use a comma-separated list for
+   multiple administrators.
+4. Stop Customer Service, recreate it with the updated environment, and start it.
+5. Log in again. Registration tokens and tokens issued before step 4 do not gain
+   admin rights; a fresh login token contains `scope: catalog:write`.
+6. Send that Bearer token to Product Service `/api/admin/**` endpoints.
+
+This is a controlled test bootstrap, not a production IAM design. Production
+should use an identity provider, managed roles, audit trails, and secret storage.
+
+## Messaging and workflow behavior
+
+The orchestration stack owns the single-node development Kafka and Temporal
+dependencies. It publishes schema-version-1 records to the three-partition
+`order-lifecycle-events` topic, keyed by order ID. Tracking Service projects
+these events and moves poison records to `order-lifecycle-events.DLT` after
+retries.
+
+The workflow intentionally reaches `WAITING_FOR_PAYMENT` after creating a
+`PENDING` payment intent. There is no payment-provider callback/operator
+confirmation API yet, so an end-to-end workflow will remain there until payment
+status becomes `COMPLETED` through a future provider integration. It must not be
+reported as a successful payment merely because an intent was created.
+
+## Deployment
+
+Use each Compose file independently from the repository root. Do **not** combine
+service Compose files with multiple `-f` arguments: their `build: .` paths are
+relative to different service directories and Compose merge semantics can build
+the wrong context.
+
+Create the shared network once:
 
 ```bash
-docker compose -f customer-service/compose.yaml up --build -d
-docker compose -f web-ui/compose.yaml up --build -d
-docker compose -f customer-service/compose.yaml ps
-docker compose -f web-ui/compose.yaml ps
+docker network inspect subscription-platform >/dev/null 2>&1 || \
+  docker network create subscription-platform
 ```
 
-Open the customer UI at `http://localhost:5173`. Customer Service is available
-directly at `http://localhost:8080`; its Swagger UI is at
-`http://localhost:8080/swagger-ui.html`.
+For a complete staged procedure, resource guidance, host ports, start order,
+verification, and safe cleanup, follow [DEPLOYMENT_RUNBOOK.md](DEPLOYMENT_RUNBOOK.md).
+For centralized logging, follow [OBSERVABILITY.md](OBSERVABILITY.md).
 
-The Web UI host port is configurable. Local development defaults to 5173 when
-`WEB_UI_PORT` is unset. On EC2, set these values in the uncommitted deployment
-environment file:
+## Local quality checks
 
-```text
-WEB_UI_PORT=80
-CORS_ALLOWED_ORIGINS=http://YOUR_STABLE_PUBLIC_IP_OR_DOMAIN
-```
-
-Then the UI is available at `http://PUBLIC_IP` through the standard inbound
-HTTP rule. The allowed CORS origin must exactly match the browser URL,
-including its scheme, hostname, and any non-standard port. Prefer an Elastic
-IP or domain because a normal EC2 public IP can change after an instance
-stop/start.
-
-Follow logs independently:
+Run a backend suite from each service directory:
 
 ```bash
-docker compose -f customer-service/compose.yaml logs -f
-docker compose -f web-ui/compose.yaml logs -f
+mvn test
 ```
 
-For centralized EC2 container logs and infrastructure monitoring, see
-[`OBSERVABILITY.md`](OBSERVABILITY.md). It configures selective Datadog log
-collection without committing API keys.
-
-Stop this slice without deleting customer data:
+Run each UI's checks from `web-ui` and `admin-ui`:
 
 ```bash
-docker compose -f web-ui/compose.yaml down
-docker compose -f customer-service/compose.yaml down
+npm test
+npm run build
+npm run lint
 ```
-
-Do not add `--volumes` unless you intentionally want to erase that service's
-database. Product, Order, Payment, and the workflow infrastructure will be added
-as separate deployments and tested one slice at a time.
-
-| Service | MongoDB container | Host port | Database | Volume |
-| --- | --- | ---: | --- | --- |
-| customer-service | `customer-mongodb` | — (Docker network only) | `customer_db` | `customer-mongodb-data` |
-| product-service | `product-mongodb` | 27018 | `product_db` | `product-mongodb-data` |
-| order-service | `order-mongodb` | 27019 | `order_db` | `order-mongodb-data` |
-| payment-service | `payment-mongodb` | 27020 | `payment_db` | `payment-mongodb-data` |
-| network-service | `network-mongodb` | 27021 | `network_db` | `network-mongodb-data` |
-| fulfillment-service | `fulfillment-mongodb` | 27022 | `fulfillment_db` | `fulfillment-mongodb-data` |
-| billing-service | `billing-mongodb` | 27023 | `billing_db` | `billing-mongodb-data` |
-| tracking-service | `tracking-mongodb` | 27024 | `tracking_db` | `tracking-mongodb-data` |
-
-### Kafka and Temporal flow
-
-1. `web-ui` creates the order, then starts an order workflow through `orchestration-service`.
-2. Temporal durably retries payment, eSIM activation, fulfilment, and billing activities.
-3. The workflow waits until the eSIM is `ACTIVE` and delivery is `DELIVERED` before starting billing.
-4. Lifecycle milestones are published to the three-partition `order-lifecycle-events` Kafka topic, keyed by order ID to preserve per-order ordering.
-5. `tracking-service` consumes those events into its own MongoDB read model; `admin-ui` displays the latest event alongside live service statuses.
-
-Kafka is the event distribution channel, while Temporal is the workflow state
-and retry engine. Kafka events are not used as the source of truth for workflow
-progress.
-
-### OpenAPI documentation
-
-Every service publishes an OpenAPI 3 document and an interactive Swagger UI:
-
-| Service | OpenAPI JSON | Swagger UI |
-| --- | --- | --- |
-| customer-service | `http://localhost:8080/v3/api-docs` | `http://localhost:8080/swagger-ui.html` |
-| product-service | `http://localhost:8081/v3/api-docs` | `http://localhost:8081/swagger-ui.html` |
-| order-service | `http://localhost:8082/v3/api-docs` | `http://localhost:8082/swagger-ui.html` |
-| payment-service | `http://localhost:8083/v3/api-docs` | `http://localhost:8083/swagger-ui.html` |
-| network-service | `http://localhost:8084/v3/api-docs` | `http://localhost:8084/swagger-ui.html` |
-| fulfillment-service | `http://localhost:8085/v3/api-docs` | `http://localhost:8085/swagger-ui.html` |
-| billing-service | `http://localhost:8086/v3/api-docs` | `http://localhost:8086/swagger-ui.html` |
-| orchestration-service | `http://localhost:8087/v3/api-docs` | `http://localhost:8087/swagger-ui.html` |
-| tracking-service | `http://localhost:8088/v3/api-docs` | `http://localhost:8088/swagger-ui.html` |
-
-The documents are generated from the controllers, request models, validation constraints, response models, and OpenAPI annotations, keeping the specification aligned with the implementation.
-
-### Customer authentication
-
-Customer Service provides password authentication and signed JWT bearer tokens:
-
-- `POST /api/auth/register` creates a customer and stores only a BCrypt password hash.
-- `POST /api/auth/login` verifies the password and returns a one-hour access token.
-- `GET /api/customers/me`, `PUT /api/customers/me`, and
-  `DELETE /api/customers/me` require `Authorization: Bearer <token>`.
-
-The Docker Compose secret is intentionally a local-development value. Set a
-strong `AUTH_JWT_SECRET` from a secret manager in shared or production
-environments; never commit a production secret. Existing customer records that
-predate authentication have no password hash and cannot log in until migrated
-or re-registered.

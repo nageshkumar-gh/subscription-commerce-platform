@@ -23,9 +23,9 @@ export function PaymentPage() {
     setPaying(true)
     try {
       const order: Order = await api.createOrder(product!, plan!, user!)
-      const subscription = await api.takePayment(order)
+      await api.takePayment(order)
       clearCart()
-      navigate('/order-confirmation', { replace: true, state: { order, subscription } })
+      navigate('/order-confirmation', { replace: true, state: { order } })
     } catch {
       setError('Payment simulation failed. No charge was made. Please try again.')
       setPaying(false)

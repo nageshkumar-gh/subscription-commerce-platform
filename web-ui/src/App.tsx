@@ -9,6 +9,8 @@ import { CheckoutPage } from './pages/CheckoutPage'
 import { HomePage } from './pages/HomePage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { OrderConfirmationPage } from './pages/OrderConfirmationPage'
+import { OrderDetailPage } from './pages/OrderDetailPage'
+import { OrdersPage } from './pages/OrdersPage'
 import { PaymentPage } from './pages/PaymentPage'
 import { ProductsPage } from './pages/ProductsPage'
 import { ProfilePage } from './pages/ProfilePage'
@@ -30,6 +32,8 @@ export function App() {
               <Route path="payment" element={<PaymentPage />} />
               <Route path="order-confirmation" element={<OrderConfirmationPage />} />
               <Route path="subscription" element={<SubscriptionPage />} />
+              <Route path="orders" element={<OrdersPage />} />
+              <Route path="orders/:orderId" element={<OrderDetailPage />} />
               <Route path="profile" element={<ProfilePage />} />
             </Route>
             <Route path="*" element={<NotFoundPage />} />

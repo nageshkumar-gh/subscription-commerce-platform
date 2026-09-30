@@ -1,0 +1,58 @@
+name: subscription-payment
+
+services:
+  payment-mongodb:
+    image: mongo:7.0-jammy
+    container_name: payment-mongodb
+    # Localhost-only, for MongoDB Compass / mongosh; not reachable from other machines.
+    ports: ["127.0.0.1:${PAYMENT_MONGODB_PORT:-27020}:27017"]
+    restart: unless-stopped
+    command: ["mongod", "--wiredTigerCacheSizeGB", "0.25"]
+    volumes: [payment-mongodb-data:/data/db]
+    labels:
+      com.datadoghq.tags.env: "${DD_ENV:-test}"
+      com.datadoghq.tags.service: "payment-mongodb"
+      com.datadoghq.tags.version: "${MONGODB_VERSION:-7.0}"
+      com.datadoghq.ad.logs: >-
+        [{"source":"mongodb","service":"payment-mongodb"}]
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/27017'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks: [subscription-platform]
+
+  payment-service:
+    build: .
+    container_name: payment-service
+    restart: unless-stopped
+    environment:
+      JAVA_TOOL_OPTIONS: -Xms32m -Xmx192m -XX:+UseSerialGC -XX:TieredStopAtLevel=1
+      SPRING_MONGODB_URI: mongodb://payment-mongodb:27017/payment_db
+      CORS_ALLOWED_ORIGINS: "${CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173},${ADMIN_CORS_ALLOWED_ORIGINS:-http://localhost:5174,http://127.0.0.1:5174}"
+    labels:
+      com.datadoghq.tags.env: "${DD_ENV:-test}"
+      com.datadoghq.tags.service: "payment-service"
+      com.datadoghq.tags.version: "${APP_VERSION:-manual}"
+      com.datadoghq.ad.logs: >-
+        [{"source":"java","service":"payment-service"}]
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/8083'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      payment-mongodb:
+        condition: service_healthy
+    networks: [subscription-platform]
+
+volumes:
+  payment-mongodb-data:
+    name: subscription-payment-mongodb-data
+
+networks:
+  subscription-platform:
+    name: subscription-platform
+    external: true

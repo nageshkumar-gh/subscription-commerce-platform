@@ -9,6 +9,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -20,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 class AuthServiceTests {
@@ -34,7 +36,7 @@ class AuthServiceTests {
 
     @BeforeEach
     void setUp() {
-        service = new AuthService(customers, passwords, jwtEncoder, 3600);
+        service = new AuthService(customers, passwords, jwtEncoder, 3600, "admin-customer");
     }
 
     @Test
@@ -96,6 +98,39 @@ class AuthServiceTests {
                 InvalidCredentialsException.class,
                 () -> service.login(new LoginRequest("nagesh@example.com", "Password1"))
         );
+    }
+
+    @Test
+    void configuredAdminReceivesCatalogScopeOnlyOnLogin() {
+        Customer admin = new Customer("admin-customer", "Admin", "admin@example.com", "123456789", true);
+        admin.setPasswordHash("bcrypt-hash");
+        when(customers.getCustomerByEmail("admin@example.com")).thenReturn(admin);
+        when(passwords.matches("Password1", "bcrypt-hash")).thenReturn(true);
+        when(jwtEncoder.encode(any(JwtEncoderParameters.class))).thenReturn(jwt("access-token"));
+
+        service.login(new LoginRequest("admin@example.com", "Password1"));
+
+        ArgumentCaptor<JwtEncoderParameters> parameters = ArgumentCaptor.forClass(JwtEncoderParameters.class);
+        verify(jwtEncoder).encode(parameters.capture());
+        assertEquals("catalog:write", parameters.getValue().getClaims().getClaim("scope"));
+    }
+
+    @Test
+    void registrationNeverGrantsCatalogScopeEvenForConfiguredId() {
+        RegisterRequest request = new RegisterRequest("Admin", "admin@example.com", "123456789", "Password1");
+        when(passwords.encode("Password1")).thenReturn("bcrypt-hash");
+        when(customers.createCustomer(any(Customer.class))).thenAnswer(invocation -> {
+            Customer customer = invocation.getArgument(0);
+            customer.setId("admin-customer");
+            return customer;
+        });
+        when(jwtEncoder.encode(any(JwtEncoderParameters.class))).thenReturn(jwt("access-token"));
+
+        service.register(request);
+
+        ArgumentCaptor<JwtEncoderParameters> parameters = ArgumentCaptor.forClass(JwtEncoderParameters.class);
+        verify(jwtEncoder).encode(parameters.capture());
+        org.junit.jupiter.api.Assertions.assertNull(parameters.getValue().getClaims().getClaim("scope"));
     }
 
     private Jwt jwt(String token) {

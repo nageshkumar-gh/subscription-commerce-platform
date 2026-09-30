@@ -1,6 +1,8 @@
 package com.example.productservice.model;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
@@ -8,10 +10,10 @@ import java.math.BigDecimal;
 @Document(collection = "esim_plans")
 public class EsimPlan {
     @Id private String id;
-    @NotBlank @Indexed(unique = true) private String code;
-    @NotBlank private String name;
-    @NotBlank private String description;
-    @DecimalMin(value = "0.0", inclusive = false) private BigDecimal monthlyPrice;
+    @NotBlank @Size(max = 64) @Indexed(unique = true) private String code;
+    @NotBlank @Size(max = 120) private String name;
+    @NotBlank @Size(max = 1000) private String description;
+    @NotNull @DecimalMin(value = "0.0", inclusive = false) private BigDecimal monthlyPrice;
     private boolean active;
     public EsimPlan() {}
     public EsimPlan(String id,String code,String name,String description,BigDecimal monthlyPrice,boolean active){this.id=id;this.code=code;this.name=name;this.description=description;this.monthlyPrice=monthlyPrice;this.active=active;}

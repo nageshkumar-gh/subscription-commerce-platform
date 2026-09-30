@@ -13,6 +13,7 @@ export function AppLayout() {
         <nav aria-label="Main navigation">
           <NavLink to="/products">Products</NavLink>
           <NavLink to="/cart">Cart{product ? ' (1)' : ''}</NavLink>
+          {user && <NavLink to="/orders">My orders</NavLink>}
           {user && <NavLink to="/subscription">My subscription</NavLink>}
           {user && <NavLink to="/profile">Profile</NavLink>}
         </nav>

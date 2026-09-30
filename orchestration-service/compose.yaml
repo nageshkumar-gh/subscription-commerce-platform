@@ -1,0 +1,101 @@
+name: subscription-orchestration
+services:
+  kafka:
+    image: apache/kafka:3.9.1
+    container_name: kafka
+    restart: unless-stopped
+    mem_limit: 640m
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_HEAP_OPTS: -Xms256m -Xmx384m
+    volumes: ["kafka-data:/var/lib/kafka/data"]
+    labels:
+      com.datadoghq.tags.env: "${DD_ENV:-test}"
+      com.datadoghq.tags.service: kafka
+      com.datadoghq.ad.logs: '[{"source":"kafka","service":"kafka"}]'
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server 127.0.0.1:9092 --list >/dev/null 2>&1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    networks: [subscription-platform]
+  temporal-postgresql:
+    image: postgres:16-alpine
+    container_name: temporal-postgresql
+    restart: unless-stopped
+    mem_limit: 256m
+    environment: {POSTGRES_USER: temporal, POSTGRES_PASSWORD: temporal, POSTGRES_DB: temporal}
+    volumes: ["temporal-postgresql-data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U temporal"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [subscription-platform]
+  temporal:
+    image: temporalio/auto-setup:1.28.1
+    container_name: temporal
+    restart: unless-stopped
+    mem_limit: 768m
+    environment:
+      DB: postgres12
+      DB_PORT: 5432
+      POSTGRES_USER: temporal
+      POSTGRES_PWD: temporal
+      POSTGRES_SEEDS: temporal-postgresql
+    depends_on: {temporal-postgresql: {condition: service_healthy}}
+    healthcheck:
+      test: [ "CMD", "temporal", "operator", "cluster", "health", "--address", "temporal:7233" ]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 45s
+    networks: [subscription-platform]
+  orchestration-service:
+    build: .
+    container_name: orchestration-service
+    restart: unless-stopped
+    init: true
+    ports: ["127.0.0.1:${ORCHESTRATION_SERVICE_PORT:-8087}:8087"]
+    mem_limit: 384m
+    environment:
+      JAVA_TOOL_OPTIONS: -Xms32m -Xmx224m -XX:+UseSerialGC -XX:TieredStopAtLevel=1
+      TEMPORAL_TARGET: temporal:7233
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SERVICES_PAYMENT_URL: http://payment-service:8083
+      SERVICES_NETWORK_URL: http://network-service:8084
+      SERVICES_FULFILLMENT_URL: http://fulfillment-service:8085
+      SERVICES_BILLING_URL: http://billing-service:8086
+      SERVICES_ORDER_URL: http://order-service:8082
+      CORS_ALLOWED_ORIGINS: "${CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173},${ADMIN_CORS_ALLOWED_ORIGINS:-http://localhost:5174,http://127.0.0.1:5174}"
+    depends_on:
+      kafka: {condition: service_healthy}
+      temporal: {condition: service_healthy}
+    labels:
+      com.datadoghq.tags.env: "${DD_ENV:-test}"
+      com.datadoghq.tags.service: orchestration-service
+      com.datadoghq.tags.version: "${APP_VERSION:-manual}"
+      com.datadoghq.ad.logs: '[{"source":"java","service":"orchestration-service"}]'
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8087 && printf \"GET /actuator/health/readiness HTTP/1.0\\r\\n\\r\\n\" >&3 && grep -q UP <&3'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
+    networks: [subscription-platform]
+volumes:
+  kafka-data: {name: subscription-kafka-data}
+  temporal-postgresql-data: {name: subscription-temporal-postgresql-data}
+networks:
+  subscription-platform: {name: subscription-platform, external: true}

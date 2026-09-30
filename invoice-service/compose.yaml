@@ -1,0 +1,58 @@
+name: subscription-invoicing
+services:
+  invoice-postgresql:
+    image: postgres:16-alpine
+    container_name: invoice-postgresql
+    restart: unless-stopped
+    mem_limit: 256m
+    environment:
+      POSTGRES_DB: invoice
+      POSTGRES_USER: "${INVOICE_DB_USER:-invoice}"
+      POSTGRES_PASSWORD: "${INVOICE_DB_PASSWORD:-invoice}"
+    # Local-only port so the invoicing records can be inspected with psql or an IDE.
+    ports: ["127.0.0.1:${INVOICE_DB_PORT:-5433}:5432"]
+    volumes: ["invoice-postgresql-data:/var/lib/postgresql/data"]
+    labels:
+      com.datadoghq.tags.env: "${DD_ENV:-test}"
+      com.datadoghq.tags.service: invoice-postgresql
+      com.datadoghq.ad.logs: '[{"source":"postgresql","service":"invoice-postgresql"}]'
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${INVOICE_DB_USER:-invoice} -d invoice"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [subscription-platform]
+  invoice-service:
+    build: .
+    container_name: invoice-service
+    restart: unless-stopped
+    init: true
+    ports: ["127.0.0.1:${INVOICE_SERVICE_PORT:-8089}:8089"]
+    mem_limit: 384m
+    environment:
+      JAVA_TOOL_OPTIONS: -Xms32m -Xmx224m -XX:+UseSerialGC -XX:TieredStopAtLevel=1
+      SPRING_DATASOURCE_URL: jdbc:postgresql://invoice-postgresql:5432/invoice
+      SPRING_DATASOURCE_USERNAME: "${INVOICE_DB_USER:-invoice}"
+      SPRING_DATASOURCE_PASSWORD: "${INVOICE_DB_PASSWORD:-invoice}"
+      SERVICES_BILLING_URL: http://billing-service:8086
+      SERVICES_PAYMENT_URL: http://payment-service:8083
+      INVOICE_ZONE: "${INVOICE_ZONE:-Europe/Dublin}"
+      CORS_ALLOWED_ORIGINS: "${ADMIN_CORS_ALLOWED_ORIGINS:-http://localhost:5174,http://127.0.0.1:5174}"
+    depends_on:
+      invoice-postgresql: {condition: service_healthy}
+    labels:
+      com.datadoghq.tags.env: "${DD_ENV:-test}"
+      com.datadoghq.tags.service: invoice-service
+      com.datadoghq.tags.version: "${APP_VERSION:-manual}"
+      com.datadoghq.ad.logs: '[{"source":"java","service":"invoice-service"}]'
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8089 && printf \"GET /actuator/health/readiness HTTP/1.0\\r\\n\\r\\n\" >&3 && grep -q UP <&3'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
+    networks: [subscription-platform]
+volumes:
+  invoice-postgresql-data: {name: subscription-invoice-postgresql-data}
+networks:
+  subscription-platform: {name: subscription-platform, external: true}

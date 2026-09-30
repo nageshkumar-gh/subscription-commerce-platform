@@ -1,2 +1,2 @@
 package com.example.paymentservice.model;
-public enum PaymentStatus { COMPLETED, FAILED, REFUNDED }
+public enum PaymentStatus { PENDING, COMPLETED, FAILED, REFUND_PENDING, REFUNDED }

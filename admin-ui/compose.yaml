@@ -1,0 +1,22 @@
+name: subscription-admin-ui
+services:
+  admin-ui:
+    build: .
+    container_name: admin-ui
+    restart: unless-stopped
+    init: true
+    ports: ["${ADMIN_UI_PORT:-5174}:80"]
+    mem_limit: 96m
+    labels:
+      com.datadoghq.tags.env: "${DD_ENV:-test}"
+      com.datadoghq.tags.service: admin-ui
+      com.datadoghq.tags.version: "${APP_VERSION:-manual}"
+      com.datadoghq.ad.logs: '[{"source":"nginx","service":"admin-ui"}]'
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks: [subscription-platform]
+networks:
+  subscription-platform: {external: true, name: subscription-platform}

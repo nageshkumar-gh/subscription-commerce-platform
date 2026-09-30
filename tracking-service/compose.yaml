@@ -1,0 +1,53 @@
+name: subscription-tracking
+services:
+  tracking-mongodb:
+    image: mongo:7.0-jammy
+    container_name: tracking-mongodb
+    # Localhost-only, for MongoDB Compass / mongosh; not reachable from other machines.
+    ports: ["127.0.0.1:${TRACKING_MONGODB_PORT:-27024}:27017"]
+    restart: unless-stopped
+    command: ["mongod", "--wiredTigerCacheSizeGB", "0.25"]
+    volumes: ["tracking-mongodb-data:/data/db"]
+    mem_limit: 512m
+    labels:
+      com.datadoghq.tags.env: "${DD_ENV:-test}"
+      com.datadoghq.tags.service: tracking-mongodb
+      com.datadoghq.tags.version: "${MONGODB_VERSION:-7.0}"
+      com.datadoghq.ad.logs: '[{"source":"mongodb","service":"tracking-mongodb"}]'
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/27017'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks: [subscription-platform]
+  tracking-service:
+    build: .
+    container_name: tracking-service
+    restart: unless-stopped
+    init: true
+    ports: ["127.0.0.1:${TRACKING_SERVICE_PORT:-8088}:8088"]
+    environment:
+      JAVA_TOOL_OPTIONS: -Xms32m -Xmx192m -XX:+UseSerialGC -XX:TieredStopAtLevel=1
+      SPRING_MONGODB_URI: mongodb://tracking-mongodb:27017/tracking_db
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      CORS_ALLOWED_ORIGINS: "${ADMIN_CORS_ALLOWED_ORIGINS:-http://localhost:5174,http://127.0.0.1:5174}"
+    mem_limit: 320m
+    depends_on:
+      tracking-mongodb: {condition: service_healthy}
+    labels:
+      com.datadoghq.tags.env: "${DD_ENV:-test}"
+      com.datadoghq.tags.service: tracking-service
+      com.datadoghq.tags.version: "${APP_VERSION:-manual}"
+      com.datadoghq.ad.logs: '[{"source":"java","service":"tracking-service"}]'
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8088 && printf \"GET /actuator/health/readiness HTTP/1.0\\r\\n\\r\\n\" >&3 && grep -q UP <&3'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks: [subscription-platform]
+volumes:
+  tracking-mongodb-data: {name: subscription-tracking-mongodb-data}
+networks:
+  subscription-platform: {name: subscription-platform, external: true}

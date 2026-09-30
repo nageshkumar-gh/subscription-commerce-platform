@@ -1,0 +1,51 @@
+name: subscription-network
+services:
+  network-mongodb:
+    image: mongo:7.0-jammy
+    container_name: network-mongodb
+    # Localhost-only, for MongoDB Compass / mongosh; not reachable from other machines.
+    ports: ["127.0.0.1:${NETWORK_MONGODB_PORT:-27021}:27017"]
+    restart: unless-stopped
+    command: ["mongod", "--wiredTigerCacheSizeGB", "0.25"]
+    volumes: ["network-mongodb-data:/data/db"]
+    mem_limit: 512m
+    labels:
+      com.datadoghq.tags.env: "${DD_ENV:-test}"
+      com.datadoghq.tags.service: network-mongodb
+      com.datadoghq.tags.version: "${MONGODB_VERSION:-7.0}"
+      com.datadoghq.ad.logs: '[{"source":"mongodb","service":"network-mongodb"}]'
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/27017'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks: [subscription-platform]
+  network-service:
+    build: .
+    container_name: network-service
+    restart: unless-stopped
+    init: true
+    ports: ["127.0.0.1:${NETWORK_SERVICE_PORT:-8084}:8084"]
+    environment:
+      JAVA_TOOL_OPTIONS: -Xms32m -Xmx192m -XX:+UseSerialGC -XX:TieredStopAtLevel=1
+      SPRING_MONGODB_URI: mongodb://network-mongodb:27017/network_db
+    mem_limit: 320m
+    depends_on:
+      network-mongodb: {condition: service_healthy}
+    labels:
+      com.datadoghq.tags.env: "${DD_ENV:-test}"
+      com.datadoghq.tags.service: network-service
+      com.datadoghq.tags.version: "${APP_VERSION:-manual}"
+      com.datadoghq.ad.logs: '[{"source":"java","service":"network-service"}]'
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8084 && printf \"GET /actuator/health/readiness HTTP/1.0\\r\\n\\r\\n\" >&3 && grep -q UP <&3'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks: [subscription-platform]
+volumes:
+  network-mongodb-data: {name: subscription-network-mongodb-data}
+networks:
+  subscription-platform: {external: true, name: subscription-platform}

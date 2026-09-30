@@ -15,6 +15,7 @@ export default defineConfig({
       '/api/fulfillments': 'http://localhost:8085',
       '/api/subscriptions': 'http://localhost:8086',
       '/api/workflows': 'http://localhost:8087',
+      '/api/tracking': 'http://localhost:8088',
     },
   },
   test: {

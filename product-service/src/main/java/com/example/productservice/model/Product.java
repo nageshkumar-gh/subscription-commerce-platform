@@ -2,6 +2,8 @@ package com.example.productservice.model;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
@@ -10,13 +12,13 @@ import java.util.List;
 @Document(collection = "products")
 public class Product {
     @Id private String id;
-    @NotBlank @Indexed(unique = true) private String sku;
-    @NotBlank private String name;
-    @NotBlank private String description;
+    @NotBlank @Size(max = 64) @Indexed(unique = true) private String sku;
+    @NotBlank @Size(max = 120) private String name;
+    @NotBlank @Size(max = 1000) private String description;
     @NotBlank private String storage;
     @NotBlank private String finish;
-    @DecimalMin(value = "0.0", inclusive = false) private BigDecimal price;
-    @NotEmpty private List<String> features;
+    @NotNull @DecimalMin(value = "0.0", inclusive = false) private BigDecimal price;
+    @NotEmpty @Size(max = 20) private List<@NotBlank @Size(max = 200) String> features;
     private boolean active;
     public Product() {}
     public Product(String id, String sku, String name, String description, String storage, String finish, BigDecimal price, List<String> features, boolean active) {
