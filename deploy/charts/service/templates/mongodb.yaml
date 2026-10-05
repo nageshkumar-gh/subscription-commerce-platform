@@ -1,0 +1,62 @@
+{{- if .Values.mongodb.enabled }}
+{{- $name := required "mongodb.name is required" .Values.mongodb.name }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "service.mongoLabels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: {{ $name }}
+  ports:
+    - name: mongodb
+      port: 27017
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "service.mongoLabels" . | nindent 4 }}
+spec:
+  serviceName: {{ $name }}
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ $name }}
+  template:
+    metadata:
+      labels:
+        {{- include "service.mongoLabels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: mongodb
+          image: {{ .Values.mongodb.image }}
+          args: ["--wiredTigerCacheSizeGB", {{ .Values.mongodb.cacheSizeGB | quote }}]
+          ports:
+            - name: mongodb
+              containerPort: 27017
+          resources:
+            {{- toYaml .Values.mongodb.resources | nindent 12 }}
+          readinessProbe:
+            tcpSocket:
+              port: mongodb
+            periodSeconds: 10
+          volumeMounts:
+            - name: data
+              mountPath: /data/db
+  # Kept when the release is uninstalled, so staging data survives a reinstall.
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: {{ .Values.mongodb.storage }}
+{{- end }}

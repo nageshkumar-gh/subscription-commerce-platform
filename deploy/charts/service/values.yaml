@@ -1,0 +1,44 @@
+# Defaults shared by every service. Each service overrides these in deploy/values/<env>/<service>.yaml.
+
+# Service name; also the in-cluster DNS name other services call (e.g. order-service:8082).
+name: ""
+port: 8080
+replicas: 1
+
+image:
+  repository: ""
+  # Commit SHA published to ECR by the CI publish job. Pass with --set image.tag=<sha>.
+  tag: ""
+
+# Plain environment variables for the container.
+env: {}
+
+# Size the heap from the container memory limit instead of a fixed -Xmx.
+javaToolOptions: "-XX:MaxRAMPercentage=75 -XX:+UseSerialGC -XX:TieredStopAtLevel=1"
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 256Mi
+  limits:
+    memory: 384Mi
+
+# Spring Boot Actuator probe endpoints (management.endpoint.health.probes.enabled=true).
+probes:
+  enabled: true
+  readinessPath: /actuator/health/readiness
+  livenessPath: /actuator/health/liveness
+
+mongodb:
+  enabled: false
+  # Service name of the database, matching the Compose container name (e.g. order-mongodb).
+  name: ""
+  image: mongo:7.0-jammy
+  cacheSizeGB: "0.25"
+  storage: 2Gi
+  resources:
+    requests:
+      cpu: 50m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
