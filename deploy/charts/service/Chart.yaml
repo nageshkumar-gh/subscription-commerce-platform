@@ -1,5 +1,0 @@
-apiVersion: v2
-name: service
-description: One Spring Boot service, optionally with its own MongoDB, for the k3s environments.
-type: application
-version: 0.1.0
