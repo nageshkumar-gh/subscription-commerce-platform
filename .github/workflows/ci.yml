@@ -82,3 +82,46 @@ jobs:
       - name: Require every job to succeed
         run: |
           [ "${{ needs.java.result }}" = success ] && [ "${{ needs.ui.result }}" = success ] || { echo "java=${{ needs.java.result }} ui=${{ needs.ui.result }}"; exit 1; }
+
+  # Push images to ECR only after a merge to main has passed every check, tagged with the commit SHA.
+  publish:
+    name: Publish (${{ matrix.image }})
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [ci-passed]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write # OIDC sign-in to AWS, so no long-lived keys are stored in GitHub.
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - customer-service
+          - product-service
+          - order-service
+          - payment-service
+          - network-service
+          - fulfillment-service
+          - billing-service
+          - orchestration-service
+          - tracking-service
+          - invoice-service
+          - web-ui
+          - admin-ui
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.image }}
+          push: true
+          tags: ${{ steps.ecr.outputs.registry }}/${{ matrix.image }}:${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
